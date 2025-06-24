@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sismos USGS + SSN</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #map { height: 100%; width: 100%; }
+    .info-box { font-family: sans-serif; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    
+    const map = L.map('map').setView([19.4326, -99.1332], 6); // CDMX centrado
+
+    const CartoDB_Positron = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      {
+        attribution:
+          '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 20,
+      }
+    ).addTo(map);
+
+    function getIcon(mag) {
+      if (mag < 4) return L.icon({ iconUrl: 'leve.png', iconSize: [40, 40], iconAnchor: [20, 40] });
+      if (mag < 6) return L.icon({ iconUrl: 'moderado.png', iconSize: [40, 40], iconAnchor: [20, 40] });
+      return L.icon({ iconUrl: 'fuerte.png', iconSize: [40, 40], iconAnchor: [20, 40] });
+    }
+
+    // USGS
+    fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson')
+      .then(r => r.json())
+      .then(data => {
+        data.features.forEach(f => {
+          const [lon, lat] = f.geometry.coordinates;
+          const mag = f.properties.mag || 0;
+          const title = f.properties.title || 'Sismo';
+          if (isNaN(lat) || isNaN(lon)) return;
+          L.marker([lat, lon], { icon: getIcon(mag) })
+            .addTo(map)
+            .bindPopup(`<div class="info-box"><b>${title}</b><br>Fuente: USGS</div>`);
+        });
+      })
+      .catch(err => console.error('USGS error', err));
+
+    fetch('https://corsproxy.io/?http://www.ssn.unam.mx/rss/ultimos-sismos.xml')
+      .then(res => res.text())
+      .then(str => new DOMParser().parseFromString(str, 'text/xml'))
+      .then(xml => {
+        xml.querySelectorAll('item').forEach(item => {
+          const title = item.querySelector('title')?.textContent?.trim();
+          const lat = parseFloat(item.getElementsByTagNameNS('http://www.w3.org/2003/01/geo/wgs84_pos#','lat')[0]?.textContent);
+          const lon = parseFloat(item.getElementsByTagNameNS('http://www.w3.org/2003/01/geo/wgs84_pos#','long')[0]?.textContent);
+          if (!title || isNaN(lat) || isNaN(lon)) return;
+          const mag = parseFloat(title.split(',')[0]) || 0;
+          L.marker([lat, lon], { icon: getIcon(mag) })
+            .addTo(map)
+            .bindPopup(`<div class="info-box"><b>${title}</b><br>Fuente: SSN</div>`);
+        });
+      })
+      .catch(err => console.error('SSN error', err));
+  </script>
+</body>
+</html>
